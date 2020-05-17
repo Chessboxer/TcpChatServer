@@ -13,9 +13,8 @@ namespace TcpChatServer
         // What listens in 
         private TcpListener _listener;
 
-        // Types of clients connected
-        private List<TcpClient> _viewers = new List<TcpClient>();
-        private List<TcpClient> _messengers = new List<TcpClient>();
+        // Clients connected
+        private List<TcpClient> _clients = new List<TcpClient>();
 
         // Names that are taken by other messengers
         private Dictionary<TcpClient, string> _names = new Dictionary<TcpClient, string>();
@@ -54,7 +53,7 @@ namespace TcpChatServer
         public void Run()
         {
             // some info
-            Console.WriteLine($"Starting the \"{ChatName} TCP Chat Server\"  on port {Port}");
+            Console.WriteLine($"Starting the \"{ChatName} TCP Chat Server\" on port {Port}");
             Console.WriteLine("Press Ctrl-C to shutdown the server at any time.");
 
             // Make the server run
@@ -77,10 +76,9 @@ namespace TcpChatServer
                 Thread.Sleep(10);
             }
 
-            foreach (TcpClient v in _viewers)
-                _cleanupClient(v);
-            foreach (var m in _messengers)
-                _cleanupClient(m);
+            foreach (TcpClient client in _clients)
+                _cleanupClient(client);
+
             _listener.Stop();
 
             //Some info 
@@ -111,81 +109,45 @@ namespace TcpChatServer
             {
                 string msg = Encoding.UTF8.GetString(msgBuffer, 0, bytesRead);
 
-                if (msg == "viewer")
-                {
-                    // they just want to watch
-                    good = true;
-                    _viewers.Add(newClient);
-
-                    Console.WriteLine($" {endPoint} is a viewer.");
-                    // Send them a "hello" message
-                    msg = string.Format($"Welcome to the \"{ChatName}\" chat sever!"); // creates message
-                    msgBuffer = Encoding.UTF8.GetBytes(msg);                            // encodes message into binary
-                    netStream.Write(msgBuffer, 0, msgBuffer.Length); // blocks          // write to netstream... (the binary encoded message, starting byte, number of bytes)
-                }
-                else if (msg.StartsWith("name:"))
-                {
-                    // Okay, so they might be a messenger
-                    string name = msg.Substring(msg.IndexOf(':') + 1);
+                // Okay, so they might be a messenger
+                string name = msg.Substring(msg.IndexOf(':') + 1);
 
                     if ((name != string.Empty) && (!_names.ContainsValue(name)))
                     {
                         good = true;
                         _names.Add(newClient, name);
-                        _messengers.Add(newClient);
+                        _clients.Add(newClient);
                     }
 
                     Console.Write($"{endPoint} is a new messenger with the name {name}.");
-
-                    // Tells the viewers we have a new messenger
+                // Tells the viewers we have a new messenger
                     _messageQueue.Enqueue(String.Format($"{name} has entered the chat."));
-                }
-                else
-                {
-                    // Wasnt either a viewer or messenger, clean up anyways.
-                    Console.WriteLine($"Wasnt able to to verify {endPoint} as a viewer nor as a messenger.");
-                    _cleanupClient(newClient);
-
-                }
+                                             
             }
             // Do we really want them?
             if (!good)
                 newClient.Close();
         }
 
-
         // Sees if any of the clients have left the chat server
         private void _checkForDisconnects()
         {
-            // Check the viewers first
-            foreach (TcpClient v in _viewers.ToArray())
-            {
-                if (_isDisconnected(v))
+
+            // Check the clients
+            foreach (TcpClient client in _clients.ToArray()){
+                if (_isDisconnected(client))
                 {
-                    Console.WriteLine($"Viewer {v.Client.RemoteEndPoint} has left.");
+                    // get name
+                    string name = _names[client];
 
-                    // cleanup on our end
-                    _viewers.Remove(v);
-                    _cleanupClient(v);
-                }
-            }
-
-            // Check messengers second
-            foreach (TcpClient m in _messengers.ToArray())
-            {
-                if (_isDisconnected(m))
-                {
-                    // Get info about the messenger
-                    string name = _names[m];
-
-                    // Tell the viewers someone has left
+                    // inform 
                     Console.Write($"Messenger {name} has left.");
                     _messageQueue.Enqueue(String.Format($"{name} has left the chat."));
 
-                    // Clean up on our end
-                    _messengers.Remove(m); // Remove from list
-                    _names.Remove(m);
-                    _cleanupClient(m);
+                    // clean up
+                    _clients.Remove(client); // Remove from list of clients
+                    _names.Remove(client); // remove name from dictionary 
+                    _cleanupClient(client); // close tcpclient steram and object
                 }
             }
         }
@@ -193,17 +155,17 @@ namespace TcpChatServer
         //  See if any of our messengers have sent us a new message, put it in the queue
         private void _checkForNewMessages()
         {
-            foreach (TcpClient m in _messengers)
+            foreach (TcpClient client in _clients)
             {
-                int messageLength = m.Available;
+                int messageLength = client.Available;
                 if (messageLength > 0)
                 {
                     // There is one! Get it.
                     byte[] msgBuffer = new byte[messageLength];
-                    m.GetStream().Read(msgBuffer, 0, msgBuffer.Length);
+                    client.GetStream().Read(msgBuffer, 0, msgBuffer.Length);
 
                     // Attach a name to it and shove it into the queue
-                    string msg = String.Format($"{_names[m]}: {Encoding.UTF8.GetString(msgBuffer)}");
+                    string msg = String.Format($"{_names[client]}: {Encoding.UTF8.GetString(msgBuffer)}");
                     _messageQueue.Enqueue(msg);
                 }
             }
@@ -218,11 +180,14 @@ namespace TcpChatServer
                 // Encode the message
                 byte[] msgBuffer = Encoding.UTF8.GetBytes(msg);
 
-                // send the message to each viewer
-                foreach (TcpClient v in _viewers)
-                    v.GetStream().Write(msgBuffer, 0, msgBuffer.Length); // BLocks
-            }
+                // send the message to each client
+                foreach (TcpClient client in _clients)
+                    client.GetStream().Write(msgBuffer, 0, msgBuffer.Length);
 
+                //// send the message to each viewer
+                //foreach (TcpClient v in _viewers)
+                //    v.GetStream().Write(msgBuffer, 0, msgBuffer.Length); // BLocks
+            }
             //clear out the queue
             _messageQueue.Clear();
 
@@ -250,10 +215,6 @@ namespace TcpChatServer
             client.Close();             // Close client
         }
 
-
-
-
-
         public static TcpChatServer chat;
 
         protected static void InterruptHandler(object sender, ConsoleCancelEventArgs args)
@@ -275,17 +236,6 @@ namespace TcpChatServer
             //run the chat server
             chat.Run();
         }
-
-
-
-
-
     }
-}
 
-//namespace TcpChatServer
-//{
-//    class TcpChatServer
-//    {
-//    }
-//}
+}
