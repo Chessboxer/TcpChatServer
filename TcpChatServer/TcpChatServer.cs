@@ -16,6 +16,7 @@ namespace TcpChatServer
         // Types of clients connected
         private List<TcpClient> _viewers = new List<TcpClient>();
         private List<TcpClient> _messengers = new List<TcpClient>();
+        private List<TcpClient> _clients = new List<TcpClient>();
 
         // Names that are taken by other messengers
         private Dictionary<TcpClient, string> _names = new Dictionary<TcpClient, string>();
@@ -54,7 +55,7 @@ namespace TcpChatServer
         public void Run()
         {
             // some info
-            Console.WriteLine($"Starting the \"{ChatName} TCP Chat Server\"  on port {Port}");
+            Console.WriteLine($"Starting the \"{ChatName} TCP Chat Server\" on port {Port}");
             Console.WriteLine("Press Ctrl-C to shutdown the server at any time.");
 
             // Make the server run
@@ -83,7 +84,7 @@ namespace TcpChatServer
                 _cleanupClient(m);
             _listener.Stop();
 
-            //Some info 
+            //Some info lolol
             Console.WriteLine("Sever is shutdown");
 
         }
@@ -111,22 +112,8 @@ namespace TcpChatServer
             {
                 string msg = Encoding.UTF8.GetString(msgBuffer, 0, bytesRead);
 
-                if (msg == "viewer")
-                {
-                    // they just want to watch
-                    good = true;
-                    _viewers.Add(newClient);
-
-                    Console.WriteLine($" {endPoint} is a viewer.");
-                    // Send them a "hello" message
-                    msg = string.Format($"Welcome to the \"{ChatName}\" chat sever!"); // creates message
-                    msgBuffer = Encoding.UTF8.GetBytes(msg);                            // encodes message into binary
-                    netStream.Write(msgBuffer, 0, msgBuffer.Length); // blocks          // write to netstream... (the binary encoded message, starting byte, number of bytes)
-                }
-                else if (msg.StartsWith("name:"))
-                {
-                    // Okay, so they might be a messenger
-                    string name = msg.Substring(msg.IndexOf(':') + 1);
+                // Okay, so they might be a messenger
+                string name = msg.Substring(msg.IndexOf(':') + 1);
 
                     if ((name != string.Empty) && (!_names.ContainsValue(name)))
                     {
@@ -136,22 +123,80 @@ namespace TcpChatServer
                     }
 
                     Console.Write($"{endPoint} is a new messenger with the name {name}.");
-
-                    // Tells the viewers we have a new messenger
+                // Tells the viewers we have a new messenger
                     _messageQueue.Enqueue(String.Format($"{name} has entered the chat."));
-                }
-                else
-                {
-                    // Wasnt either a viewer or messenger, clean up anyways.
-                    Console.WriteLine($"Wasnt able to to verify {endPoint} as a viewer nor as a messenger.");
-                    _cleanupClient(newClient);
-
-                }
+                                             
             }
             // Do we really want them?
             if (!good)
                 newClient.Close();
         }
+
+
+        //private void _handleNewConnection()
+        //{
+        //    // There is (at least) one, see what they want
+        //    bool good = false;
+        //    TcpClient newClient = _listener.AcceptTcpClient(); // Blocks
+        //    NetworkStream netStream = newClient.GetStream();
+
+        //    // Modify the default buffer sizes
+        //    newClient.SendBufferSize = BufferSize;
+        //    newClient.ReceiveBufferSize = BufferSize;
+
+        //    // Print some info
+        //    EndPoint endPoint = newClient.Client.RemoteEndPoint;
+        //    Console.WriteLine($"Handling a new client from {endPoint}...");
+
+        //    // Let them identify themselves
+        //    byte[] msgBuffer = new byte[BufferSize];
+        //    int bytesRead = netStream.Read(msgBuffer, 0, msgBuffer.Length); // Blocks
+        //    // Console.WriteLine($"Got {bytesRead} bytes.");
+        //    if (bytesRead > 0)
+        //    {
+        //        string msg = Encoding.UTF8.GetString(msgBuffer, 0, bytesRead);
+
+        //        if (msg == "viewer")
+        //        {
+        //            // they just want to watch
+        //            good = true;
+        //            _viewers.Add(newClient);
+
+        //            Console.WriteLine($" {endPoint} is a viewer.");
+        //            // Send them a "hello" message
+        //            msg = string.Format($"Welcome to the \"{ChatName}\" chat sever!"); // creates message
+        //            msgBuffer = Encoding.UTF8.GetBytes(msg);                            // encodes message into binary
+        //            netStream.Write(msgBuffer, 0, msgBuffer.Length); // blocks          // write to netstream... (the binary encoded message, starting byte, number of bytes)
+        //        }
+        //        else if (msg.StartsWith("name:"))
+        //        {
+        //            // Okay, so they might be a messenger
+        //            string name = msg.Substring(msg.IndexOf(':') + 1);
+
+        //            if ((name != string.Empty) && (!_names.ContainsValue(name)))
+        //            {
+        //                good = true;
+        //                _names.Add(newClient, name);
+        //                _messengers.Add(newClient);
+        //            }
+
+        //            Console.Write($"{endPoint} is a new messenger with the name {name}.");
+
+        //            // Tells the viewers we have a new messenger
+        //            _messageQueue.Enqueue(String.Format($"{name} has entered the chat."));
+        //        }
+        //        else
+        //        {
+        //            // Wasnt either a viewer or messenger, clean up anyways.
+        //            Console.WriteLine($"Wasnt able to to verify {endPoint} as a viewer nor as a messenger.");
+        //            _cleanupClient(newClient);
+
+        //        }
+        //    }
+        //    // Do we really want them?
+        //    if (!good)
+        //        newClient.Close();
+        //}
 
 
         // Sees if any of the clients have left the chat server
